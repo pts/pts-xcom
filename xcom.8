@@ -1,0 +1,174 @@
+;
+; xcom.8 v2.2
+; by pts@fazekas.hu (EP/PSW, Hungary) on 1996-09-10
+;
+; Compile with: a86 +S xcom.8
+;
+; Usage (on DOS):
+;
+;   xcom - <original.com >ascii.com
+;   xcom -- <original.dat >ascii.dat
+;   xcom <ascii.dat >original.dat
+;   xcom <ascii.com >original.com
+;
+
+	ide_len= 128
+	count= b[80h]
+
+start:	xor bp, bp
+	mov al, count
+	cmp al, 0
+	if e jmp startb
+	cmp al, 2
+	je starta			;make .COM file there
+
+	mov w[offset l3], 9090h		;replace "ja l1" by two "nop"s
+	jmp l1				;skip header
+
+;-----------------------------------------------------------------------------
+; acom.8
+; by pts@fazekas.hu (EP/PSW, Hungary) on 1996-09-10
+;-----------------------------------------------------------------------------
+
+starta:	mov ah, 40h			;stdout
+	mov bx, 1
+	mov cx, ide_len		;+CRLF
+	mov dx, offset ide
+	int 21h
+	jc e1
+
+l1:	mov ah, 3Fh
+	xor bx, bx			;stdin
+	mov cx, 4000h			;16384
+	mov dx, cx			;[ds:4000h]
+	mov si, dx
+	int 21h
+	jc e1
+	mov cx, ax
+	jcxz e2				;eof
+	add bp, ax
+	mov al, 255
+	cmp bp, 42666
+l3:	ja e1				;File too long
+	mov di, 8000h
+	inc cx
+	shr cx, 1
+		
+l2:	lodsw
+	mov dx, ax
+	shr ax, 12
+	and al, 63
+	add al, 63
+	call incj
+	mov ax, dx
+	shr ax, 6
+	and al, 63
+	add al, 63
+	call incj
+	mov ax, dx
+	and al, 63
+	add al, 63
+	call incj
+	loop l2
+
+	mov ah, 40h
+	mov bx, 1			;stdout
+	mov cx, di
+	mov dx, 8000h
+	sub cx, dx
+	int 21h
+	jc e1
+	jmp l1
+
+incj:	stosb
+i2:	mov ax, di
+	and ax, 3FFFh
+	mov bh, 80			;Max 16K buffer!
+	div bh
+	cmp ah, 78
+	jne i1
+	mov ax, 0A0Dh			;CRLF
+	stosw
+i1:	ret
+
+;-----------------------------------------------------------------------------
+;?com.8 Common Error/Exit routine
+;-----------------------------------------------------------------------------
+
+e1:	push ax
+	mov al, 7
+	int 29h				;Beep
+	pop ax
+e2:	mov ah, 4Ch
+	int 21h				;Exit to OS
+	
+;-----------------------------------------------------------------------------
+; bcom.8
+; by pts@fazekas.hu (EP/PSW, Hungary) on 1996-09-10
+;-----------------------------------------------------------------------------
+
+startb:	mov count, 3
+
+	mov ah, 7			;read stdin in AL
+	int 21h
+	cmp al, '&'
+	je k2
+
+	mov ax, 4200h			;Ignore first char read
+	xor bx, bx
+	xor cx, cx
+	xor dx, dx
+	int 21h
+	jmp k1
+
+k2:	mov ah, 3Fh
+	xor bx, bx			;stdin
+	mov cx, ide_len-1
+	mov dx, 8000h
+	int 21h
+	jc e1
+
+k1:	mov ah, 3Fh
+	xor bx, bx			;stdin
+	mov cx, 4000h			;16384 (divisible by 3)
+	mov dx, cx
+	mov si, cx
+	int 21h
+	jc e1
+	mov cx, ax
+	jcxz e2				;eof
+	mov di, 8000h
+
+	mov ah, 0	
+k0:     lodsb
+        sub al, 63
+        if nc call send
+	loop k0
+
+	mov ah, 40h
+	mov bx, 1			;stdout
+	mov dx, 8000h
+	mov cx, di
+	sub cx, dx
+	int 21h
+	jc e1
+	jmp k1
+
+send:	shl bp, 6
+	add bp, ax
+	dec count
+	jnz s1
+	mov count, 3
+	mov [di], bp
+	inc di
+	inc di
+s1:	ret
+
+;-----------------------------------------------------------------------------
+; try.com 128-byte self-decoder routine
+; by pts@fazekas.hu (EP/PSW, Hungary) on 1996-09-10
+;-----------------------------------------------------------------------------
+
+ide:	db '&XPZ,2P_0E[0E_,pP[,Eu',13,10
+	db 'R^!5+1+1CC+1)5GGHu#PWtl6~!ugH"!rE"!~~0B(m"!4r!!Y~!)E~"0~~Cump!!|d',13,10
+	db '~E)!~~0B(m"!pq!"G0!!oD!"B~"v_Q"! PSW',13,10
