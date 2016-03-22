@@ -1,0 +1,359 @@
+-*- coding: UTF-8 -*-
+
+DOS-os program ASCII-kódolása, hogy futtatható maradjon
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""
+by pts@fazekas.hu (EP/PSW, Hungary) at 1996-09-10
+revised on 2016-03-22
+
+A probléma
+~~~~~~~~~~
+Bináris adat (tetszőleges bájtsorozat) vágólapon történő másolása vagy
+e-mailben történő elküldése escape-elés nélkül nem biztonságos: bizonyos
+bájtok megváltozhatnak vagy eltűnhetnek. ASCII-alapú rendszerek között a a
+33 és 126 közötti kódú bájtok vihetők át biztonságosan, esetleg még a 32-es
+(szóköz), de az sor végén elveszhet, továbbá a CR (13-as kódú) és LF (10-es
+kódú) soremelő karakterek, de előfordulhat, hogy a CRLF, CR vagy LF átvitel
+közben átalakul ezek közül bármelyikké.
+
+Meglevő megoldások
+~~~~~~~~~~~~~~~~~~
+* base64: 3 bájtból 4 bájtot csinál, soremeléseket szúr be.
+* uuencode: 3 bájtból 4 bájtot csinál, soremeléseket szúr be.
+* binhex: 3 bájtból 4 bájtot csinál, soremeléseket szúr be.
+* base85 (PostScript /Base85Encode): 4 bájtból 5 bájtot csinál,
+  soremeléseket szúrhat be.
+
+A soremelések beszúrása miatt a maximális sorhossz 60 és 78 bájt közé esik,
+így a bináris adat e-mailben is elküldhetővé válik (ahol a hosszú sorok nem
+megengedettek további kódolás nélkül).
+
+A saját megoldás
+~~~~~~~~~~~~~~~~
+* xcom: 2 bájtból 3 bájtot csinál, soremeléseket szúr be
+
+Bár az xcom kódolási arányában rosszabb a base85-nél és a base64-nél is,
+különleges tulajdonsága, hogy ha futtatható DOS-os COM-fájlt kódolunk el
+vele, akkor a kódolt (csupa ASCII-karakterből álló fájl) továbbra is
+futtatható marad COM-fájként, és indításkor először dekódolja önmagát. A
+dekódoló rutin a fájl elején található, és úgy van megírva 16 bites x86 gépi
+kódban, hogy csak ASCII-karaktereket használjon. A dekódoló rutin mérete 128
+bájt, melynek utolsó 6 bájtja csak dekoráció.
+
+A kódolt fájl a 33 és 126 közötti bájtokon kívül csak CRLF-eket (13, majd
+10) tartalmaz, és maximum 78 bájt után mindig következik egy CRLF. Az első 3
+db CRLF-nek a helyén kell maradnia az átvitel során, utána már jöhetnek CRLF
+helyett LF-ek is, vagy bármi. Ez egy gyakorlati hiányosság, mert sok
+átviteli mód a az első CRLF-eket is LF-re változtatja. Még egy gyakorlati
+hiányosság, hogy csak páros hosszú bemenet kódolható vele (lásd lent) --
+páratlan hosszú bemenet kiegészül párosra, és már nem lehet megmondani,
+páros volt-e.
+
+Az xcom egy wordből (w, 2 bájt) 3 bájtot (b1, b2, b3) csinál. w így épül fel:
+
+┌───────────────────────────────────────────────┐
+│                      W                        │ 
+├──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┬──┤
+│15│14│13│12│11│10│ 9│ 8│ 7│ 6│ 5│ 4│ 3│ 2│ 1│ 0│
+├──┴──┴──┴──┴──┴──┴──┴──┼──┴──┴──┴──┴──┴──┴──┴──┤
+│     Felső bájt (f)    │     Alsó bájt  (a)    │
+├───────────┬───────────┴─────┬─────────────────┤
+│F. 4 bit(x)│Középső 6 bit (y)│ Alsó 6 bit (z)  │
+└───────────┴─────────────────┴─────────────────┘
+
+A kódolási folyamat:	beolvas(w)
+			továbbít(x+63)
+			továbbít(y+63)
+			továbbít(z+63)
+
+A dekódolási folyamat:	beolvas(b)
+			w=b-63
+			beolvas(b)
+			w=w*64+b-63
+			beolvas(b)
+			w=w*64+b-63
+			továbbít(w)
+
+Fontos:	Mivel wordökkel dolgozunk, csak páros hosszú kódolandó adatot fogadunk
+el. Ha a felhasználó páratlan hosszú fájlt akar kódolni, a dekódolási
+folyamat utáni utolsó bájt lecsípéséről neki kell gondoskodnia.
+
+A fentiek szerint a kódolt adatsorban 63 és 126 közötti (valóban nyomtatható)
+karakterek lesznek. Ha mégis másfajta érkezne, azt egyszerűen figyelmen kívül
+hagyhatjuk. ìgy például a kocsivissza (13) és soremelés (10) karaktereket is.
+Ezzel a kiterjesztéssel lehetőség nyílik az e-mail reális kihasználására, a
+kódolt adatsort 78 hosszú sorokba rendezve a szövegfájl esztétikus látványt
+nyújt.
+
+Íme a program, ami a kódolást (binárisból ASCII-ba) és a dekódolást is el
+tudja végezni:
+
+--- EplPáj/PSW: xcom1.com --- 745 bytes, Cut here v
+&XPZ,2P_0E[0E_,pP[,Eu
+R^!5+1+1CC+1)5GGHu#PWtl6~!ugH"!rE"!~~0B(m"!4r!!Y~!)E~"0~~Cump!!|d
+~E)!~~0B(m"!pq!"G0!!oD!"B~"v_Q"! PSW
+MsrGA_Bo?FS?McB?AR?G{?ds?ZF?DBHAO?~hJO?Jl???@GAxJg??GPAFLEtqB}sLkr?AxGl?GfPKvU
+FG`Gd]MN@?L_JBgGF~Ij|F]eJ|OG??LD@IvhLAJMb@AOK?O~M_~??hKIJMb@AOE?O~M_~??\KIJB{c
+B{C@RgMG?JR[Jl???@K}J?AyAe?KvPFG`MkUIifK]JN{dJ[~NXOGBvCz{?Pt?uwIkIDBB?]oAfLJPW
+KtKKW`G?E?K??]sAFLAW{?xs?AwBLABNZBNHKvQMc`??MB}sLkrF}xJg?G??AFLKtqB}sLkr?AxGl?
+GnPKvpFG`Ge}MN@J~?G???AsAqkFG~M_B??SNZaCAs?EzJg?G??K}JLChAFLHlqKrjMV@?KENzgG?M
+FS?KWHG?E?K?AuHC\FAZBD@WApYD?qB@^DlDCSoAp^D@oApZFTD?gLDxQBS`BCjBCjCLBBCjBShC\F
+FTGD?bFPVBXkAD}E\tAHGFG`AHDFw`B@}A`AAHlBO`ADqDc`AD}CShAH}FwoCL}EttADoFo`?tcFwI
+AdDFw`B@}A`AAHlF?`ADpC[aACoE{`ADCCGaAH}D|uAHPA?`DLO?tV?gI
+--- Cut here ^
+
+A --- -ok közötti sorokat vágd ki, CRLF-esen írd bele egy .COM fájlba
+(xcom1.com, 745 bájtnak kell lennie), indítsd el DOS alatt az alábbi módok
+bármelyikén:
+
+  xcom1 - <original.com >ascii.com
+  xcom1 -- <original.dat >ascii.dat
+  xcom1 <ascii.dat >original.dat
+  xcom1 <ascii.com >original.com
+
+Például önmagát is tudja dekódolni:
+
+  xcom1 <xcom1.com >xcom.com
+
+Az eredményül kapott xcom.com 401 bájtos, tartalmaz nem-ASCII bájtokat, és
+ugyanazt csinálja, mint az xcom1.com. Az xcom.com forráskódja a mellékelt
+xcom.nasm (Netwide Assembler http://nasm.us/) és xcom.8 (A86,
+http://www.eji.com/a86/) fájlokban olvasható. Fordítási instrukciók
+ugyanezen fájlok elején.
+
+Az xcom1.com (és az xcom.com) funkciói:
+
+* Paraméter nélkül ASCII-kódolt fájlból csinál
+  binárisat, azaz dekódol. Például önmagát is képes dekódolni.
+
+* 1 bájt hosszú paraméterrel .COM fájból ASCII-kódolt .COM fájlt készít.
+
+* 2 bájt hosszú paraméterrel adatfájlt ASCII-kódol. Abban különbözik az előző
+  opciótól, hogy a 128 bájtos fejlécet nem adja hozzá. A dekódoló rutin
+  természetesen mindkét tipusú kódolást dekódolja.
+
+A módszer hiányosságai:
+
+1. A dekódolás mindig páros hosszú fájlt csinál, esetleg 1 bájttal hosszabbat,
+   mint amilyen az eredeti volt.
+
+2. COM esetén az első 3 soremelésnek a helyén kell maradnia CRLF-ként (13,
+   10). A további soremelések elhagyhatóak vagy épp szabadon beszúrhatóak
+   (tetszőleges 32-nél kisebb kódú bájt, tetszőlegesen sokszor).   
+
+3. COM esetén a kódolt (futtatható) program max 77 bájtnyi paramétert fogadhat.
+   Ha mégis többet kapna, az eredmény nincs definiálva. (Egy sima
+   COM-program maximum 127 bájtot fogadhat.)
+
+4. Az I/O-hibákat nem kezeli, működése ekkor definiálatlan.
+
+Az xcom története
+~~~~~~~~~~~~~~~~~
+Ahol nem jelzem külön, csak én (EplPáj) dolgoztam rajta.
+
+0.0  NetRun ötlettől vezérelve néhány nagyon kezdetleges próbálgatás (ekkor
+     jöttem rá, hogy MOV-ot egyáltalán nem lehet használni stb.)
+0.1  Egy elméleti algoritmus, aminek *működnie kell*. Nem működött. (2 bájtból
+     egyet módszer: dest=-*s-s[1]; s+=2)
+0.2  Finomított 2 bájtból egyet módszer: dest=-*s-*s-s[1]; s+=2; Csak debugger
+     alatt működött, mivel önmódosító, de nem törli az instruction fetch-t.
+0.3  Elméleti terv az új, instr.f.-t figyelembe vevő változatról. A
+     "második dekódoló rutin" terve. Az egész source matekfüzetbe írva.
+1.0  Az első működő változat, a maga 170 bájtos headerjével, és dupla 0-t
+     berakó bugos kódjával. Az egész konvertálás batch-fájlból ment,
+     ami 2 Pascal programot, meg az assembly-fordítót hívta meg. A második
+     dekódoló rutint is tartalmazta. FZ/S és EplPáj közösen fejlesztette
+     1996-09-02-án (első tanítási nap).
+1.1  Minor bugfixes, optimálás, tesztelés, debugolás. FZ/S és EplPáj közösen
+     fejlesztette 1996-09-02-án (első tanítási nap).
+1.2  Az "xcom -", akkori néven acom.com. Az első csak önmagát használó, a
+     Pascal kódot nélkülöző mini-konverter.
+1.3  A dupla 0-s bug kijavítva, eszeveszett, több órás optimálás, a (C)
+     kivétele, a "SUB AL, konstans" bevezetése. Már csak 160 bájt a header.
+     Mostmár fogadhat (max 60 bájtnyi) paramétert, thanx to new tech.
+1.4  Visszakonvertálás: "xcom ", avagy bcom.com. acom+bcom integrálás xcom-má,
+     paraméteres meghívás, adatfájlokat is készít, intelligens
+     formátumfelsmerő "xcom ". Első terjesztett változat.
+2.0  Egy teljesen új módszernek köszönhetően további 12 bájtot sikerült
+     faragni mintegy 1 óra alatt. Ehhez a program teljes egészének
+     újraírása volt szükséges, de megérte. Az első dekódoló rutin 64 bájtja
+     helyett már csak 48 bájt (!), ehhez a teljes második dekódoló rutint újra
+     kellett kódolni egy intelligensebb, de lassú, Pascal programos
+     módszerrel.
+2.1  A második dekódoló rutin apró optimálása. Mostmár az is csak 48 bájt, de
+     de mivel kódolva van (1->2), ezért 96. Összesen tehát 48+96=144, plusz a 2
+     bájt CRLF az első adatsor előtt. (Mind az első, mind a második dekódoló
+     rutin 2 sort foglal el.)
+2.2  Egy újabb, szinte zseniálisnak mondható húzással még 22 bájttal
+     csökkentettem a header méretét, döntően a második dekódoló rutin
+     optimalizásával. A 22 bájtból négyet a ' PSW' szövegre használva
+     (PSW=PotterSoftware, a csapatom neve) a kód mérete varázslatosan 128 bájt
+     lett. Sőt, ezzel együtt mostmár XT-kompatíbilis a kód. 1996-09-10.
+
+Köszönet illeti Borlandékat a debuggerükért, Eric Isaacsont (az A86
+szerzőjét) és a NetRun íróit.
+
+Technikai leírás
+~~~~~~~~~~~~~~~~
+Abból indultam ki, hogy a következő utasítások működnek ASCII-ben is:
+
+* push regw
+* pop regw
+* inc regw
+* dec regw
+* sub [reg+konstans],reg
+* sub reg,[reg+konstans]
+* xor [reg+konstans],reg
+* xor reg,[reg+konstans]
+* push bájt_konstans
+
+Ezekből csináltam egy olyan ciklust, amely úgy csinál 2 bájtból egyet, hogy
+nullából kivonja az elsőt kétszer, majd ebből a másodikat egyszer. C-ben ez
+így nézne ki:
+
+  char count=64, *source=0x140, *dest=0x80;
+  count=64;
+  while (count--) {
+    *dest=2**source;
+    source++;
+    *dest+=*source;
+    *dest=-*dest;
+    source++;
+    dest++;
+  }
+
+Be lehet bizonyítani, hogy minden bájthoz létezik olyan (b1, b2) számpár,
+ahol 33<=b1,b2<=126 és a fenti dekódolás (b1, b2)-ből az adott bájtot adja.
+Persze a jnz-nél, és a dekódolt rutinra történő vezérlésátadásnál kellett egy
+kicsit cselezni, de az 1.0-ban már ez is működött. A 2.0-ban ez annyiban
+változott meg, hogy int *source, *dest, azaz wordönként mozgat.
+
+Ez a dekódolás nagyon pocsékló, ezért csak rövid fájlokon érdemes használni.
+Ezért bevezettem a kétlépcsős dekódolást:
+
+1. A fájl három részből épül fel: első dekódoló rutin, második dekódoló
+   rutin, adat.
+
+2. Az első dekódoló rutin dekódolja a második dekódoló rutint, majd
+   elindítja.
+
+3. A második dekódoló rutin dekódoja az adatot, majd elindítja. (Az adat
+    tulajdonképpen az eredeti program kódolt változata.)
+
+Ez a mechanizmus azért így működik, mert ezt használva a második dekódoló rutin
+már *akármilyen* assembly-utasítást tartalmazhat (0..255), akármilyen bonyolult
+lehet, sőt, a bonyolult (2->3) kódolást is vissza tudja fejteni, korrektül
+kezelheti a CRLF-et, stb. A C-s példa az első dekódoló rutint mutatja. Látszik
+benne, hogy a paraméterterületre dolgozik, ezért nem fogadhatunk paramétert.
+
+A második dekódoló rutin a fejezet elején leírt módszerrel 3 bájtból kettőt
+csinál, a 32-nél kisebb (pl. CR, LF) bájtokkal nem törődve. Ez a rutin
+a fejlesztés során nem sokat változott. Továbbiakban az elsőre koncentrálunk.
+
+Jöjjön most az első dekódoló rutin megjegyzésekkel ellátott A86 (assembly)
+forrása.
+
+--- EplPáj/PSW: decode1.8 --- Cut here v
+;
+; decode1.8, decoder phase 2 of the Universal ASCII message v2.2
+; by pts@fazekas.hu (EP/PSW, Hungary) and FZ/S/PSW on 1996-09-10
+;
+
+;CS=DS=ES=SS; SP=0FFFEh; A verem tetején egy 0 van elpusholva;
+;(A dokumentálás során jöttem rá, hogy ki lehetne használni, hogy az első pop
+;AX után SP=0. Ekkor 2 bájtot nyernénk. Pusztán azért nem teszem ezt, mert
+;akkor nem lennénk XT-kompatibilisek, másrészt az SP=0FFFEh csak akkor
+;garantált, ha van elég szabad memória)
+
+;Memóriatérkép:
+;[DS:0000h]..[DS:007Fh] DOS-féle PSP, mindenféle jó kis infóval, amit mi most
+;			nem használunk ki.
+;[DS:0080h]..[DS:00BFh] A paraméterterület (DTA) első 64 bájtja. Ezt nem
+;                       fogjuk felülírni.
+;[DS:00C0h]..[DS:00FFh] A paraméterterület második 64 bájtja. Ide fogjuk
+;			dekódolni a második dekódoló rutint.
+;[DS:0100h]..[DS:012Dh] Az első dekódoló rutin (ez a fájl lefordítva).
+;[DS:012Eh]..[DS:017Bh] A második dekódoló rutin kódolt formában (ezt fogjuk mi
+			dekódolni).
+;[DS:017Ch]..[DS:017Fh] db ' PSW'
+;[DS:0180h]..		ADAT. Nincs semmi dolgunk vele.
+
+start:	db 026h			;ES: Ez egy '&' jel, ami az xcom-nak jelzi,
+				;hogy a 128 bájtos önkicsomagoló rész
+				;következik. Különben nem csinál semmit.
+	pop ax			;A verem tetejére a DOS egy nullát helyezett.
+	push ax
+	pop dx			;DX:=0
+	sub al, 032h		;AX:=0CEh
+	push ax
+	pop di			;DI:=0CEh (ld memtérképen (DI+2)-t)
+	xor [di+059h+2], al	;Az első dummy utasítás dekódolása
+	xor [di+05Dh+2], al	;A második dummy utasítás dekódolása
+	sub al, 70h
+	push ax
+	pop bx			;BX:=05Eh
+	sub al, 047h-2		;AX:=019h (AX-1 word a második dekódoló rutin
+				;hossza
+	db 075h, 00Dh, 00Ah	;jmp l2, újsor kezdése, és az utasításcache
+				;kinullázása a dummy utasítások miatt. A
+				;főciklus közepébe ugrunk, de a regiszterek úgy
+				;lettek beállítva, hogy minden OK.
+l1:	push dx			;==>Főciklus
+	pop si			;SI:=0
+	and [di], si		;DI+BX mutat a sourcera, DI a destinationra.
+				;x=0;
+	sub si, [di+bx]		;x-=*source;
+	sub si, [di+bx]		;x-=*source;
+	inc bx
+	inc bx			;source++;
+	sub si, [di+bx]		;x-=*source;
+l2:	sub [di], si            ;*dest=-x;
+	inc di			;source++;
+	inc di			;dest++;
+	dec ax			;count--;
+	db 075h, 0EDh xor 0CEh	;jnz l1 (első dummy utasítás, kódolva)
+				;===>Főciklus vége
+	push ax			;Az elején kivett 0-t visszapusholjuk
+	push di			;DI=100h Ez a második dekódoló rutinnak kell a
+				;kilépéshez
+	db 074h, 0A2h xor 0CEh	;jz 0D0h (2. dummy utasítás, kódolva)
+				;A második dekódoló rutinra ugrunk.
+--- Cut here ^
+
+Íme a második dekódoló rutin dekódolt változatának forrása. Ez a futá során
+a [DS:0D0h]-en kezdődik, és err ugrik az első dekódoló rutin utolsó
+utasítása:
+
+--- EplPáj/PSW: decode2.8 --- Cut here v
+;
+; decode2.8, decoder phase 2 of the Universal ASCII message v2.2
+; by pts@fazekas.hu (EP/PSW, Hungary) and FZ/S/PSW on 1996-09-10
+;
+
+;Emlékezzünk a következőkre: BX=08Eh, DI=100h, AX=0 és egy 100h be van
+;push-olva. Ez utóbbit majd csak a végén használjuk ki. Figyeljük meg
+;továbbá, hogy AH az egész rutin alatt 0 marad.
+
+	lea si, [di+bx-16]	;SI:=17Eh (CRLF, majd kódolt szöveg)
+	mov cl, 6		;XT-kompatibilítás
+l2:     lodsb			;Get x
+	sub al, 63              ;Check
+	jc l2			;Not valid? Get next.
+	mov w[di], ax		;w=(x-63);
+	shl w[di], cl           ;w*=64;
+l3:     lodsb			;Get y
+	sub al, 63              ;Check
+	jc l3                   ;Not valid? Get next.
+	add w[di], ax           ;w+=(y-63);
+	shl w[di], cl           ;w*=64;
+l4:     lodsb                   ;Get z
+	sub al, 63              ;Check
+	jc l4                   ;Not valid? Get next.
+	add w[di], ax		;w+=(z-63);
+	scasw			;Store w
+	cmp di, 42666		;Worked enough?
+	jc l2			;  No: compute next w.
+	ret			;  Yes: start prg at [100h]
+;	db ' PSW'               ;Decoration after the routine.
+--- Cut here ^
+
+__EOF__
