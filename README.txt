@@ -20,4 +20,7 @@ A similar project which produces DOS EXE executables with only ASCII bytes:
 https://www.cs.cmu.edu/~tom7/abc/paper.pdf . It also contains an explanation
 of how it can be done.
 
+A similar project which creates ASCII-only i386 machine code:
+http://www.dmi.unipg.it/bista/didattica/sicurezza-pg/buffer-overrun/hacking-book/0x2a0-writing_shellcode.html
+
 __END__
