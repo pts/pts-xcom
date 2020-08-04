@@ -138,7 +138,7 @@ A módszer hiányosságai:
 
 2. COM esetén az első 3 soremelésnek a helyén kell maradnia CRLF-ként (13,
    10). A további soremelések elhagyhatóak vagy épp szabadon beszúrhatóak
-   (tetszőleges 32-nél kisebb kódú bájt, tetszőlegesen sokszor).   
+   (tetszőleges 63-nál kisebb kódú bájt, tetszőlegesen sokszor).   
 
 3. COM esetén a kódolt (futtatható) program max 77 bájtnyi paramétert fogadhat.
    Ha mégis többet kapna, az eredmény nincs definiálva. (Egy sima
@@ -187,7 +187,7 @@ Ahol nem jelzem külön, csak én (EplPáj) dolgoztam rajta.
      csökkentettem a header méretét, döntően a második dekódoló rutin
      optimalizásával. A 22 bájtból négyet a ' PSW' szövegre használva
      (PSW=PotterSoftware, a csapatom neve) a kód mérete varázslatosan 128 bájt
-     lett. Sőt, ezzel együtt mostmár XT-kompatíbilis a kód. 1996-09-10.
+     lett. Sőt, ezzel együtt mostmár 8086-kompatibilis a kód. 1996-09-10.
 
 Köszönet illeti Borlandékat a debuggerükért, Eric Isaacsont (az A86
 szerzőjét) és a NetRun íróit.
@@ -246,7 +246,7 @@ kezelheti a CRLF-et, stb. A C-s példa az első dekódoló rutint mutatja. Láts
 benne, hogy a paraméterterületre dolgozik, ezért nem fogadhatunk paramétert.
 
 A második dekódoló rutin a fejezet elején leírt módszerrel 3 bájtból kettőt
-csinál, a 32-nél kisebb (pl. CR, LF) bájtokkal nem törődve. Ez a rutin
+csinál, a 63-nál kisebb (pl. CR, LF) bájtokkal nem törődve. Ez a rutin
 a fejlesztés során nem sokat változott. Továbbiakban az elsőre koncentrálunk.
 
 Jöjjön most az első dekódoló rutin megjegyzésekkel ellátott A86 (assembly)
@@ -254,14 +254,14 @@ forrása.
 
 --- EplPáj/PSW: decode1.8 --- Cut here v
 ;
-; decode1.8, decoder phase 2 of the Universal ASCII message v2.2
+; decode1.8, decoder phase 1 of the Universal ASCII message v2.2
 ; by pts@fazekas.hu (EP/PSW, Hungary) and FZ/S/PSW on 1996-09-10
 ;
 
 ;CS=DS=ES=SS; SP=0FFFEh; A verem tetején egy 0 van elpusholva;
 ;(A dokumentálás során jöttem rá, hogy ki lehetne használni, hogy az első pop
 ;AX után SP=0. Ekkor 2 bájtot nyernénk. Pusztán azért nem teszem ezt, mert
-;akkor nem lennénk XT-kompatibilisek, másrészt az SP=0FFFEh csak akkor
+;akkor nem lennénk 8086-kompatibilisek, másrészt az SP=0FFFEh csak akkor
 ;garantált, ha van elég szabad memória)
 
 ;Memóriatérkép:
@@ -319,7 +319,7 @@ l2:	sub [di], si            ;*dest=-x;
 				;A második dekódoló rutinra ugrunk.
 --- Cut here ^
 
-Íme a második dekódoló rutin dekódolt változatának forrása. Ez a futá során
+Íme a második dekódoló rutin dekódolt változatának forrása. Ez a futás során
 a [DS:0D0h]-en kezdődik, és err ugrik az első dekódoló rutin utolsó
 utasítása:
 
@@ -329,12 +329,11 @@ utasítása:
 ; by pts@fazekas.hu (EP/PSW, Hungary) and FZ/S/PSW on 1996-09-10
 ;
 
-;Emlékezzünk a következőkre: BX=08Eh, DI=100h, AX=0 és egy 100h be van
-;push-olva. Ez utóbbit majd csak a végén használjuk ki. Figyeljük meg
-;továbbá, hogy AH az egész rutin alatt 0 marad.
+; At entry: BX=08Eh, DI=100h, AX=0, return address 100h is at top of stack.
+; FYI: AH stays 0 through the entire routine.
 
-	lea si, [di+bx-16]	;SI:=17Eh (CRLF, majd kódolt szöveg)
-	mov cl, 6		;XT-kompatibilítás
+	lea si, [di+bx-16]	;SI:=17Eh (CRLF, then 6-to-8 encoded bytes).
+	mov cl, 6		;Compatibility with 8086.
 l2:     lodsb			;Get x
 	sub al, 63              ;Check
 	jc l2			;Not valid? Get next.
@@ -349,7 +348,7 @@ l4:     lodsb                   ;Get z
 	sub al, 63              ;Check
 	jc l4                   ;Not valid? Get next.
 	add w[di], ax		;w+=(z-63);
-	scasw			;Store w
+	scasw			;di+=2, flags ignored.
 	cmp di, 42666		;Worked enough?
 	jc l2			;  No: compute next w.
 	ret			;  Yes: start prg at [100h]
